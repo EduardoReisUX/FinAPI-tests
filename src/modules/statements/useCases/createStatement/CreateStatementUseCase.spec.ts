@@ -3,33 +3,46 @@ import { CreateUserUseCase } from "../../../users/useCases/createUser/CreateUser
 import { OperationType, Statement } from "../../entities/Statement";
 import { InMemoryStatementsRepository } from "../../repositories/in-memory/InMemoryStatementsRepository";
 import { CreateStatementUseCase } from "../createStatement/CreateStatementUseCase";
-import { GetBalanceError } from "./GetBalanceError";
-import { GetBalanceUseCase } from "./GetBalanceUseCase";
+import { CreateStatementError } from "./CreateStatementError";
 
 let inMemoryUsersRepository: InMemoryUsersRepository;
 let inMemoryStatementsRepository: InMemoryStatementsRepository;
 
 let createUserUseCase: CreateUserUseCase;
-let getBalanceUseCase: GetBalanceUseCase;
 let createStatementUseCase: CreateStatementUseCase;
 
-describe("Get Balance", () => {
+describe("Create Statement", () => {
   beforeEach(() => {
     inMemoryUsersRepository = new InMemoryUsersRepository();
     inMemoryStatementsRepository = new InMemoryStatementsRepository();
 
     createUserUseCase = new CreateUserUseCase(inMemoryUsersRepository);
-    getBalanceUseCase = new GetBalanceUseCase(
-      inMemoryStatementsRepository,
-      inMemoryUsersRepository
-    );
     createStatementUseCase = new CreateStatementUseCase(
       inMemoryUsersRepository,
       inMemoryStatementsRepository
     );
   });
 
-  it("should return list of all withdrawals, deposists and total balance of an user", async () => {
+  it("should be able to create a deposit", async () => {
+    const user = await createUserUseCase.execute({
+      name: "test name",
+      email: "email@test.com",
+      password: "test password",
+    });
+
+    const deposit = await createStatementUseCase.execute({
+      user_id: user.id!,
+      amount: 100,
+      description: "test deposit",
+      type: OperationType.DEPOSIT,
+    });
+
+    expect(deposit).toHaveProperty("id");
+    expect(deposit.amount).toBe(100);
+    expect(deposit.description).toBe("test deposit");
+  });
+
+  it("should be able to create a withdraw", async () => {
     const user = await createUserUseCase.execute({
       name: "test name",
       email: "email@test.com",
@@ -43,28 +56,32 @@ describe("Get Balance", () => {
       type: OperationType.DEPOSIT,
     });
 
-    await createStatementUseCase.execute({
+    const withdraw = await createStatementUseCase.execute({
       user_id: user.id!,
       amount: 50,
-      description: "test deposit",
-      type: OperationType.DEPOSIT,
+      description: "test withdraw",
+      type: OperationType.WITHDRAW,
     });
 
-    const { balance, statement } = await getBalanceUseCase.execute({
-      user_id: user.id!,
-    });
-
-    expect(balance).toBe(150);
-    expect(statement).toHaveLength(2);
-    expect(statement[0].amount).toBe(100);
-    expect(statement[1].amount).toBe(50);
+    expect(withdraw).toHaveProperty("id");
+    expect(withdraw.amount).toBe(50);
+    expect(withdraw.description).toBe("test withdraw");
   });
 
-  it("should return error if user doesn't exists", async () => {
+  it("should not be able to withdraw with insufficient funds", async () => {
     expect(async () => {
-      await getBalanceUseCase.execute({
-        user_id: "random incorrect id",
+      const user = await createUserUseCase.execute({
+        name: "test name",
+        email: "email@test.com",
+        password: "test password",
       });
-    }).rejects.toBeInstanceOf(GetBalanceError);
+
+      await createStatementUseCase.execute({
+        user_id: user.id!,
+        amount: 50,
+        description: "test withdraw",
+        type: OperationType.WITHDRAW,
+      });
+    }).rejects.toBeInstanceOf(CreateStatementError.InsufficientFunds);
   });
 });
